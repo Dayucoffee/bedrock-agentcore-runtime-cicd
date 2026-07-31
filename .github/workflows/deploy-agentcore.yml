@@ -47,6 +47,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
+    - name: Debug OIDC token claims                                                    
+            run: |                                                                           
+              ENCODED=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \ 
+               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | python3 -c    
+      "import sys,json; print(json.load(sys.stdin)['value'])")                                  
+              PAYLOAD=$(echo $ENCODED | cut -d. -f2 | python3 -c "import sys,base64;         
+      d=sys.stdin.read().strip(); d+='='*(-len(d)%4); print(base64.b64decode(d).decode())")     
+          echo "=== OIDC Token Claims ==="                                               
+              echo $PAYLOAD | python3 -c "import sys,json; c=json.load(sys.stdin);           
+      print('sub:', c.get('sub')); print('aud:', c.get('aud')); print('iss:', c.get('iss'));    
+      print('repository:', c.get('repository'))"
+
     - name: Set up Python
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:

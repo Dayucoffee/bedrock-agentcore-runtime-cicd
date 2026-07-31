@@ -54,7 +54,8 @@ def create_oidc_provider(iam_client):
     # GitHub OIDC provider configuration
     github_url = "https://token.actions.githubusercontent.com"
     # GitHub's root CA thumbprint (required for OIDC trust)
-    thumbprint = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
+    thumbprint = ["6938fd4d98bab03faadb97b34396831e3780aea1", 
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
     
     try:
         # Check if GitHub OIDC provider already exists
@@ -68,13 +69,20 @@ def create_oidc_provider(iam_client):
         logger.info("Creating GitHub OIDC identity provider...")
         response = iam_client.create_open_id_connect_provider(
             Url=github_url,                    # GitHub's OIDC endpoint
-            ThumbprintList=[thumbprint],        # GitHub's certificate thumbprint
+            ThumbprintList=thumbprint,         # GitHub's certificate thumbprints
             ClientIDList=["sts.amazonaws.com"] # AWS STS as the audience
         )
         logger.info(f"Created OIDC provider: {response['OpenIDConnectProviderArn']}")
         return response["OpenIDConnectProviderArn"]
         
     except ClientError as e:
+        if e.response["Error"]["Code"] == "EntityAlreadyExists":
+            # Provider was created between our list check and create call
+            providers = iam_client.list_open_id_connect_providers()
+            for provider in providers["OpenIDConnectProviderList"]:
+                if "token.actions.githubusercontent.com" in provider["Arn"]:
+                    logger.info(f"Using existing OIDC provider: {provider['Arn']}")
+                    return provider["Arn"]
         logger.error(f"Error creating OIDC provider: {e}")
         exit(1)
 

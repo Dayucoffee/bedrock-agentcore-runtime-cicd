@@ -14,7 +14,7 @@ jobs:
   validate:
     name: Validate Agent Code
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -42,11 +42,27 @@ jobs:
     needs: validate
     outputs:
       ecr-repository: ${{ steps.set-vars.outputs.ecr-repository }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
+    - name: Debug OIDC token claims
+      run: |
+        ENCODED=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+          | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+        PAYLOAD=$(echo $ENCODED | cut -d. -f2 \
+          | python3 -c "import sys,base64; d=sys.stdin.read().strip(); d+='='*(-len(d)%4); print(base64.b64decode(d).decode())")
+        echo "=== OIDC Token Claims ==="
+        echo $PAYLOAD | python3 -c "
+        import sys,json
+        c=json.load(sys.stdin)
+        print('sub:', c.get('sub'))
+        print('aud:', c.get('aud'))
+        print('iss:', c.get('iss'))
+        print('repository:', c.get('repository'))
+        "
 
     - name: Set up Python
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -93,7 +109,6 @@ jobs:
 
     - name: Setup ECR repository and scanning
       run: |
-        # Check if repository exists, create if not
         if aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
           echo "Repository already exists"
         else
@@ -101,14 +116,12 @@ jobs:
           aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} \
             --image-scanning-configuration scanOnPush=true
           echo "Repository created successfully"
-          
-          # Enable enhanced scanning (one-time registry setup)
           aws ecr put-registry-scanning-configuration \
             --scan-type ENHANCED \
             --rules 'scanFrequency=SCAN_ON_PUSH,repositoryFilters=[{filter="*",filterType="WILDCARD"}]' \
             --region ${{ env.AWS_REGION }} 2>/dev/null && echo "Enhanced scanning enabled" || echo "Enhanced scanning setup failed"
         fi
-        
+
     - name: Login to ECR
       uses: aws-actions/amazon-ecr-login@33f92af657bba1882ab79d8621debd2f6769a0c9
 
@@ -118,7 +131,6 @@ jobs:
         IMAGE_TAG="${GITHUB_SHA:0:8}"
         ECR_URI="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}"
         ECR_LATEST="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest"
-        
         docker buildx build --platform linux/arm64 -t $ECR_URI -t $ECR_LATEST --push .
         echo "CONTAINER_URI=$ECR_URI" >> $GITHUB_ENV
 
@@ -134,7 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-deploy
     if: success()
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955

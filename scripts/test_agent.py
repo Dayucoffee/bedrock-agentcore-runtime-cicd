@@ -122,7 +122,7 @@ def test_agent(agent_name, region):
             response = client.invoke_agent_runtime(
                 agentRuntimeArn=agent_arn,
                 qualifier="DEFAULT",  # Use default agent version
-                payload=dumps(test_case)
+                payload=dumps(test_case).encode("utf-8")
             )
             
             # Parse and display the response based on format
